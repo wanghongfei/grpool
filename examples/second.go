@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/ivpusic/grpool"
+	"github.com/wanghongfei/grpool"
 )
 
 func second() {
@@ -22,12 +22,14 @@ func second() {
 	for i := 0; i < 10; i++ {
 		count := i
 
-		pool.JobQueue <- func() {
+		pool.Submit(func() interface{} {
 			// say that job is done, so we can know how many jobs are finished
 			defer pool.JobDone()
 
 			fmt.Printf("hello %d\n", count)
-		}
+
+			return nil
+		})
 	}
 
 	// wait until we call JobDone for all jobs

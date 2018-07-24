@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/ivpusic/grpool"
+	"github.com/wanghongfei/grpool"
 )
 
 func first() {
@@ -22,9 +22,10 @@ func first() {
 	for i := 0; i < 10; i++ {
 		count := i
 
-		pool.JobQueue <- func() {
+		pool.Submit(func() interface{} {
 			fmt.Printf("I am worker! Number %d\n", count)
-		}
+			return nil
+		})
 	}
 
 	// dummy wait until jobs are finished

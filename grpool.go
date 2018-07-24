@@ -5,20 +5,25 @@ import "sync"
 // Gorouting instance which can accept client jobs
 type worker struct {
 	workerPool chan *worker
-	jobChannel chan Job
+	jobChannel chan *Future
 	stop       chan struct{}
 }
 
 func (w *worker) start() {
 	go func() {
-		var job Job
+		var jobFuture *Future
 		for {
 			// worker free, add it to pool
 			w.workerPool <- w
 
 			select {
-			case job = <-w.jobChannel:
-				job()
+			case jobFuture = <-w.jobChannel:
+				// 执行job
+				result := jobFuture.job()
+				// 将结果放到Future中
+				jobFuture.ResultChan <- result
+
+				// job()
 			case <-w.stop:
 				w.stop <- struct{}{}
 				return
@@ -30,7 +35,7 @@ func (w *worker) start() {
 func newWorker(pool chan *worker) *worker {
 	return &worker{
 		workerPool: pool,
-		jobChannel: make(chan Job),
+		jobChannel: make(chan *Future),
 		stop:       make(chan struct{}),
 	}
 }
@@ -38,7 +43,7 @@ func newWorker(pool chan *worker) *worker {
 // Accepts jobs from clients, and waits for first free worker to deliver job
 type dispatcher struct {
 	workerPool chan *worker
-	jobQueue   chan Job
+	jobQueue   chan *Future
 	stop       chan struct{}
 }
 
@@ -62,7 +67,7 @@ func (d *dispatcher) dispatch() {
 	}
 }
 
-func newDispatcher(workerPool chan *worker, jobQueue chan Job) *dispatcher {
+func newDispatcher(workerPool chan *worker, jobQueue chan *Future) *dispatcher {
 	d := &dispatcher{
 		workerPool: workerPool,
 		jobQueue:   jobQueue,
@@ -79,12 +84,18 @@ func newDispatcher(workerPool chan *worker, jobQueue chan Job) *dispatcher {
 }
 
 // Represents user request, function which should be executed in some worker.
-type Job func()
+type Job func() interface{}
 
 type Pool struct {
-	JobQueue   chan Job
+	jobQueue   chan *Future
 	dispatcher *dispatcher
 	wg         sync.WaitGroup
+}
+
+type Future struct {
+	// 可以从此channel中取出job结果
+	ResultChan		chan interface{}
+	job				func() interface{}
 }
 
 // Will make pool of gorouting workers.
@@ -93,15 +104,26 @@ type Pool struct {
 //
 // Returned object contains JobQueue reference, which you can use to send job to pool.
 func NewPool(numWorkers int, jobQueueLen int) *Pool {
-	jobQueue := make(chan Job, jobQueueLen)
+	jobQueue := make(chan *Future, jobQueueLen)
 	workerPool := make(chan *worker, numWorkers)
 
 	pool := &Pool{
-		JobQueue:   jobQueue,
+		jobQueue:   jobQueue,
 		dispatcher: newDispatcher(workerPool, jobQueue),
 	}
 
 	return pool
+}
+
+// 提交任务, 返回Future指针
+func (p *Pool) Submit(jobFunc Job) *Future {
+	f := &Future{
+		ResultChan: make(chan interface{}, 1),
+		job: jobFunc,
+	}
+
+	p.jobQueue <- f
+	return f
 }
 
 // In case you are using WaitAll fn, you should call this method
