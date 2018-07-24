@@ -16,38 +16,22 @@ https://godoc.org/github.com/ivpusic/grpool
 go get github.com/ivpusic/grpool
 ```
 
-## Simple example
-```Go
-package main
 
-import (
-  "fmt"
-  "runtime"
-  "time"
 
-  "github.com/ivpusic/grpool"
-)
+## 支持Future
 
-func main() {
-  // number of workers, and size of job queue
-  pool := grpool.NewPool(100, 50)
+```go
+	pool := NewPool(2, 10)
 
-  // release resources used by pool
-  defer pool.Release()
+	f := pool.Submit(func() interface{} {
+		time.Sleep(time.Second * 3)
+		return "ok"
+	})
 
-  // submit one or more jobs to pool
-  for i := 0; i < 10; i++ {
-    count := i
-
-    pool.JobQueue <- func() {
-      fmt.Printf("I am worker! Number %d\n", count)
-    }
-  }
-
-  // dummy wait until jobs are finished
-  time.Sleep(1 * time.Second)
-}
+	fmt.Println(<-f.ResultChan)
 ```
+
+
 
 ## Example with waiting jobs to finish
 ```Go
@@ -72,12 +56,14 @@ func main() {
   for i := 0; i < 10; i++ {
     count := i
 
-    pool.JobQueue <- func() {
-      // say that job is done, so we can know how many jobs are finished
-      defer pool.JobDone()
+    pool.Submit(func() interface{} {
+			// say that job is done, so we can know how many jobs are finished
+			defer pool.JobDone()
 
-      fmt.Printf("hello %d\n", count)
-    }
+			fmt.Printf("hello %d\n", count)
+
+			return nil
+		})
   }
 
   // wait until we call JobDone for all jobs
@@ -85,5 +71,10 @@ func main() {
 }
 ```
 
+
+
+
+
 ## License
+
 *MIT*
