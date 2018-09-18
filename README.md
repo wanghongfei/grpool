@@ -18,17 +18,18 @@ go get github.com/wanghongfei/grpool
 
 
 
-## 支持Future
+## 添加Future机制
 
 ```go
-	pool := NewPool(2, 10)
+pool := NewPool(2, 10)
 
-	f := pool.Submit(func() interface{} {
-		time.Sleep(time.Second * 3)
-		return "ok"
-	})
+f := pool.SubmitFuture(func() interface{} {
+    time.Sleep(time.Second * 3)
+    return "ok"
+})
 
-	fmt.Println(<-f.ResultChan)
+// block直到任务完成
+fmt.Println(<-f.ResultChan)
 ```
 
 
@@ -57,13 +58,13 @@ func main() {
     count := i
 
     pool.Submit(func() interface{} {
-			// say that job is done, so we can know how many jobs are finished
-			defer pool.JobDone()
+		defer pool.JobDone()
 
-			fmt.Printf("hello %d\n", count)
+		time.Sleep(time.Second * 1)
 
-			return nil
-		})
+		// 返回值会被忽略
+		return nil
+	})
   }
 
   // wait until we call JobDone for all jobs

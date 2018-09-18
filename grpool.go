@@ -4,9 +4,14 @@ import "sync"
 
 // Gorouting instance which can accept client jobs
 type worker struct {
-	workerPool chan *worker
-	jobChannel chan *Future
-	stop       chan struct{}
+	workerPool 				chan *worker
+
+	// 带有返回值的任务队列
+	jobChanWithFuture		chan *Future
+	// 无返回值的任务队列
+	jobChan					chan Job
+
+	stop					chan struct{}
 }
 
 func (w *worker) start() {
@@ -17,11 +22,14 @@ func (w *worker) start() {
 			w.workerPool <- w
 
 			select {
-			case jobFuture = <-w.jobChannel:
+			case jobFuture = <-w.jobChanWithFuture:
 				// 执行job
 				result := jobFuture.job()
 				// 将结果放到Future中
 				jobFuture.ResultChan <- result
+
+			case jobFunc := <- w.jobChan:
+				jobFunc()
 
 				// job()
 			case <-w.stop:
@@ -35,24 +43,33 @@ func (w *worker) start() {
 func newWorker(pool chan *worker) *worker {
 	return &worker{
 		workerPool: pool,
-		jobChannel: make(chan *Future),
-		stop:       make(chan struct{}),
+
+		jobChanWithFuture: make(chan *Future),
+		jobChan: make(chan Job),
+
+		stop: make(chan struct{}),
 	}
 }
 
 // Accepts jobs from clients, and waits for first free worker to deliver job
 type dispatcher struct {
-	workerPool chan *worker
-	jobQueue   chan *Future
-	stop       chan struct{}
+	workerPool 				chan *worker
+	jobQueueWithFuture   	chan *Future
+	jobQueue				chan Job
+	stop       				chan struct{}
 }
 
 func (d *dispatcher) dispatch() {
 	for {
 		select {
-		case job := <-d.jobQueue:
+		case job := <-d.jobQueueWithFuture:
 			worker := <-d.workerPool
-			worker.jobChannel <- job
+			worker.jobChanWithFuture <- job
+
+		case jobFunc := <- d.jobQueue:
+			worker := <- d.workerPool
+			worker.jobChan <- jobFunc
+
 		case <-d.stop:
 			for i := 0; i < cap(d.workerPool); i++ {
 				worker := <-d.workerPool
@@ -67,11 +84,12 @@ func (d *dispatcher) dispatch() {
 	}
 }
 
-func newDispatcher(workerPool chan *worker, jobQueue chan *Future) *dispatcher {
+func newDispatcher(workerPool chan *worker, jobQueueFuture chan *Future, jobQueue chan Job) *dispatcher {
 	d := &dispatcher{
 		workerPool: workerPool,
-		jobQueue:   jobQueue,
-		stop:       make(chan struct{}),
+		jobQueueWithFuture: jobQueueFuture,
+		jobQueue: jobQueue,
+		stop: make(chan struct{}),
 	}
 
 	for i := 0; i < cap(d.workerPool); i++ {
@@ -87,15 +105,17 @@ func newDispatcher(workerPool chan *worker, jobQueue chan *Future) *dispatcher {
 type Job func() interface{}
 
 type Pool struct {
-	jobQueue   chan *Future
-	dispatcher *dispatcher
-	wg         sync.WaitGroup
+	jobQueueFuture   	chan *Future
+	jobQueue			chan Job
+
+	dispatcher			*dispatcher
+	wg         			sync.WaitGroup
 }
 
 type Future struct {
 	// 可以从此channel中取出job结果
 	ResultChan		chan interface{}
-	job				func() interface{}
+	job				Job
 }
 
 // Will make pool of gorouting workers.
@@ -104,26 +124,36 @@ type Future struct {
 //
 // Returned object contains JobQueue reference, which you can use to send job to pool.
 func NewPool(numWorkers int, jobQueueLen int) *Pool {
-	jobQueue := make(chan *Future, jobQueueLen)
+	jobQueueFuture := make(chan *Future, jobQueueLen)
+	jobQueue := make(chan Job, jobQueueLen)
+
 	workerPool := make(chan *worker, numWorkers)
 
 	pool := &Pool{
-		jobQueue:   jobQueue,
-		dispatcher: newDispatcher(workerPool, jobQueue),
+		jobQueueFuture:   jobQueueFuture,
+		jobQueue: jobQueue,
+
+		dispatcher: newDispatcher(workerPool, jobQueueFuture, jobQueue),
 	}
 
 	return pool
 }
 
-// 提交任务, 返回Future指针
-func (p *Pool) Submit(jobFunc Job) *Future {
+// 提交有返回值任务, 返回Future指针
+func (p *Pool) SubmitFuture(jobFunc Job) *Future {
 	f := &Future{
 		ResultChan: make(chan interface{}, 1),
 		job: jobFunc,
 	}
 
-	p.jobQueue <- f
+	p.jobQueueFuture <- f
 	return f
+}
+
+// 提交无返回值的任务
+func (p *Pool) Submit(jobFunc Job) {
+	p.jobQueue <- jobFunc
+	return
 }
 
 // In case you are using WaitAll fn, you should call this method
