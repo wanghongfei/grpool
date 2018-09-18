@@ -13,7 +13,7 @@ https://godoc.org/github.com/ivpusic/grpool
 
 ## Installation
 ```
-go get github.com/ivpusic/grpool
+go get github.com/wanghongfei/grpool
 ```
 
 
