@@ -1,4 +1,4 @@
-# grpool
+# grpool - 修改版
 [![Build Status](https://travis-ci.org/ivpusic/grpool.svg?branch=master)](https://travis-ci.org/ivpusic/grpool)
 
 Lightweight Goroutine pool
@@ -34,7 +34,16 @@ fmt.Println(<-f.ResultChan)
 
 
 
+## 使用注意事项
+
+- 如果想用`pool.WaitAll()`来等待所有任务结束，就必须在提交任务之前调用`pool.WaitCount(N)`, 否则`WaitAll()`会立刻返回起不到效果
+- 任务的执行没有超时控制，如果一个任务永远跑不完，就会永远占用一个routine。
+- 如果不需要获取任务的返回值，推荐使用无返回值的`pool.Submit()`方法提交任务，降低开销
+
+
+
 ## Example with waiting jobs to finish
+
 ```Go
 package main
 
